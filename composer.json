@@ -1,0 +1,36 @@
+{
+  "name": "flashpointcms/oxidiser",
+  "description": "The oxidiser to ignite Flashpoint",
+  "type": "library",
+  "license": "BSD-3-Clause",
+  "authors": [
+    {
+      "name": "CrushedLive",
+      "email": "jordan@bugbird.co"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Flashpoint\\Oxidiser\\": "src/"
+    }
+  },
+  "require": {
+    "php": "^7.2",
+    "ext-json": "*",
+    "flashpointcms/fuel": "*",
+    "illuminate/support": "^6.0",
+    "illuminate/database": "^6.0",
+    "illuminate/console": "^6.0",
+    "illuminate/auth": "^6.0",
+    "illuminate/config": "^6.0",
+    "illuminate/http": "^6.0",
+    "dusterio/lumen-passport": "^0.2.15"
+  },
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "../Fuel"
+    }
+  ],
+  "minimum-stability": "dev"
+}
