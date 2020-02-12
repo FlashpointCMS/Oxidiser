@@ -12,13 +12,17 @@
 |
 */
 
-$router->group(['prefix' => '/{routingName}'], function ($router) {
+$router->group(['prefix' => '/entities/{routingName}'], function ($router) {
+    /** @var Laravel\Lumen\Routing\Router $router */
     $router->get('/content', 'ContentController@get');
 
-    $router->group(['prefix' => '/entity'], function ($router) {
+    $router->group(['prefix' => '/schema'], function ($router) {
+        /** @var Laravel\Lumen\Routing\Router $router */
         $router->get('/', 'EntityController@index');
         $router->get('/create', 'EntityController@create');
         $router->get('/{id}', 'EntityController@show');
         $router->post('/{id}', 'EntityController@handle');
     });
 });
+
+$router->get('/entities', 'EntitiesController');

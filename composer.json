@@ -24,7 +24,12 @@
     "illuminate/auth": "^6.0",
     "illuminate/config": "^6.0",
     "illuminate/http": "^6.0",
-    "dusterio/lumen-passport": "^0.2.15"
+    "illuminate/validation": "6.*",
+    "dusterio/lumen-passport": "^0.2.15",
+    "spatie/laravel-cors": "dev-master"
+  },
+  "require-dev": {
+    "laravel/lumen-framework": "^6.0"
   },
   "repositories": [
     {

@@ -20,9 +20,13 @@ class ConfigServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        $this->registerConfig($this->app->make('config'), 'database');
-        $this->registerConfig($this->app->make('config'), 'auth');
-        $this->registerConfig($this->app->make('config'), 'flashpoint');
+        /** @var Repository $config */
+        $config = $this->app->make('config');
+
+        $this->registerConfig($config, 'database');
+        $this->registerConfig($config, 'auth');
+        $this->registerConfig($config, 'flashpoint');
+        $this->registerConfig($config, 'cors');
     }
 
     public function registerConfig(Repository $config, $path)
