@@ -20,12 +20,12 @@ use Jenssegers\Mongodb\Eloquent\HybridRelations;
  * @method Builder|self ownedBy(Authenticator $authenticator)
  * @method Builder|self notPublished()
  * @method Builder|self published()
+ * @method Builder|self newest($id = null)
  * @property Authenticator creator
+ * @property State state
  */
 class Revision extends Model
 {
-    private static $stateCache;
-
     use HybridRelations, SoftDeletes;
 
     protected $table = 'flashpoint_revisions';
@@ -49,14 +49,39 @@ class Revision extends Model
         'state'
     ];
 
+    /** @var State */
+    private $_state;
+
+    public static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($instance) {
+            if (!empty($instance->_state)) {
+                /** @var static $instance */
+                $instance->state = $instance->_state->all();
+            }
+            return true;
+        });
+    }
+
     public function revisions()
     {
-        return $this->hasMany(self::class, 'id', 'id');
+        $query = $this->hasMany(self::class, 'id', 'id');
+        /** @var self $query */
+        return $query->published()->onlyTrashed();
     }
 
     public function latestRevision()
     {
         return $this->hasOne(self::class, 'id', 'id')->orderByDesc('created_at');
+    }
+
+    public function previousRevision()
+    {
+        return $this
+            ->belongsTo(self::class, 'previous_sequence_id', 'sequence_id')
+            ->orderByDesc('created_at');
     }
 
     public function entry(Routing $routing = null)
@@ -70,24 +95,13 @@ class Revision extends Model
     }
 
     /**
-     * @return State
-     */
-    public function toState()
-    {
-        if(!static::$stateCache) {
-            static::$stateCache = new State($this->state);
-        }
-        return self::$stateCache;
-    }
-
-    /**
      * @param Builder $builder
      * @param Routing $routing
      * @return mixed
      */
     public function scopeFromRouting($builder, Routing $routing)
     {
-        return $builder->where('routing', $routing->name())->orderByDesc('created_at');
+        return $builder->where('routing', $routing->name());
     }
 
     /**
@@ -98,6 +112,20 @@ class Revision extends Model
     public function scopeOwnedBy($builder, Authenticatable $user)
     {
         return $builder->where('authenticator_id', $user->getAuthIdentifier());
+    }
+
+    /**
+     * @param Builder $builder
+     * @return mixed
+     */
+    public function scopeNewest($builder, $id = null)
+    {
+        return $builder->distinct('id')
+            ->when($id, function ($builder, $id) {
+                /** @var Builder $builder */
+                return $builder->where('id', $id);
+            })
+            ->orderBy('id')->orderByDesc('created_at');
     }
 
     /**
@@ -123,15 +151,20 @@ class Revision extends Model
         return new static([
             'id' => $this->id,
             'routing' => $this->routing,
-            'previous_sequence_id' => $this->id,
+            'previous_sequence_id' => $this->sequence_id,
             'authenticator_id' => ($authenticator ?? app(Request::class)->user())->getAuthIdentifier(),
-            'state' => $this->state
+            'state' => $this->toState()->all()
         ]);
     }
 
-    public function firstOrCreate()
+    public function toState()
     {
+        if (empty($this->_state)) {
+            $this->_state = new State($this->state);
+            $this->state = State::class;
+        }
 
+        return $this->_state;
     }
 
     private function getDefaultUserProvider()
@@ -143,5 +176,15 @@ class Revision extends Model
                 "auth.guards.{$auth->getDefaultDriver()}.provider"
             ) . '.model'
         );
+    }
+
+    public function getPublishedAttribute()
+    {
+        return !is_null($this->published_at);
+    }
+
+    public function getRealAttribute()
+    {
+        return !is_null($this->entry);
     }
 }

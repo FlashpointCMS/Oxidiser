@@ -16,13 +16,6 @@ class EntitiesController extends Controller
     {
         /** @var Collection $routings */
         $routings = app('routings');
-        return $routings->map(function (Routing $routing) {
-            return [
-                'name' => $routing->name(),
-                'title' => $routing->entity()::title(),
-                'description' => $routing->entity()::description(),
-                'type' => $routing->entity()::type()
-            ];
-        });
+        return $routings;
     }
 }

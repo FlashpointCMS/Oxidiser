@@ -3,15 +3,23 @@
 namespace Flashpoint\Oxidiser\Helpers;
 
 use Flashpoint\Fuel\Observer;
+use Flashpoint\Oxidiser\Models\Revision;
 
 class DefaultObserver extends Observer
 {
-    public function whenSaved()
+    public function whenPublished()
     {
-        if ($this->entity->type()->isPlural()) {
-            $this->store->newInstance($this->state->all())->save();
-        } elseif ($this->entity->type()->isSingular()) {
-            $this->store->fill($this->state->all())->save();
-        }
+        $attributes = collect($this->state->all())->only($this->store->getFillable())->toArray();
+
+        $this->store->fill($attributes)->save();
+    }
+
+    public function whenRestored()
+    {
+        $this->state->set(
+            Revision::query()->withTrashed()->find(
+                $this->request->get('sequence')
+            )->toState()
+        );
     }
 }

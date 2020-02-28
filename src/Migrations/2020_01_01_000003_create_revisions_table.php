@@ -24,7 +24,7 @@ class CreateRevisionsTable extends Migration
             $table->json('state')->nullable();
 
             $table->timestamp('published_at')->nullable();
-            $table->timestamp('deleted_at')->nullable();
+            $table->softDeletes();
             $table->timestamps();
         });
     }

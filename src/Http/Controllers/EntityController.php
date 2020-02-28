@@ -3,87 +3,138 @@
 namespace Flashpoint\Oxidiser\Http\Controllers;
 
 use Flashpoint\Fuel\Entities\Definitions\Collection;
+use Flashpoint\Fuel\Entities\Definitions\Entity;
 use Flashpoint\Fuel\Routing;
 use Flashpoint\Oxidiser\Helpers\ObserverHelper;
 use Flashpoint\Oxidiser\Models\Revision;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class EntityController extends Controller
 {
-    public function index(Request $request, Routing $routing)
+    public function index(Routing $routing)
     {
-        if (!$routing->entity()::type()->isPlural()) {
+        if ($routing->entity()::plural()) {
             $collection = new Collection();
             $routing->entity()::collection($collection);
 
-            return dd($collection);
+            $entries = Revision::query()
+                ->fromRouting($routing)
+                ->newest()
+                ->get();
+
+            return $collection->populate(function ($builder) use ($entries) {
+                foreach ($entries as $revision) {
+                    /** @var Revision $revision */
+                    yield $builder(
+                        $revision->toState(),
+                        $revision->entry()->firstOrNew([])
+                    )->put('_meta', [
+                        'id' => $revision->id,
+                        'published' => $revision->published,
+                        'real' => $revision->real,
+                    ]);
+                }
+            });
         } else {
-            $entity = $routing->entity();
-
-            $unpublished = Revision::query()
-                ->ownedBy($request->user())
-                ->notPublished()
+            $revision = Revision::query()
                 ->fromRouting($routing)
-                ->first();
-            $published = Revision::query()
-                ->published()
-                ->fromRouting($routing)
-                ->first();
-            $revision = $unpublished ?? $published;
+                ->newest()
+                ->firstOrFail();
 
-            if (is_null($revision)) {
-                abort(404, 'Singular instance not found');
-            }
-
-            return dd($unpublished, $published, new $entity (
-                $routing->model()::query()->firstOrNew([]),
-                $revision->toState()
-            ));
+            return response(['id' => $revision->id], 303);
         }
     }
 
-    public function create(Request $request, Routing $routing, $id)
+    public function create(Request $request, Routing $routing)
     {
-        $revision = Revision::query()
-            ->fromRouting($routing);
+        $revision = new Revision([
+            'routing' => $routing->name(),
+            'authenticator_id' => $request->user()->id
+        ]);
 
-        if ($id) {
-            $revision = $revision->findOrFail($id);
-        } else {
-            $revision = $revision->published()->firstOrCreate();
+        $revision->save();
+        $revision->refresh();
+
+        return response(['id' => $revision->id], 303);
+    }
+
+    public function show(Routing $routing, $id, $sequence = null)
+    {
+        $entity = $routing->entity();
+        $revision = Revision::query()
+            ->fromRouting($routing)
+            ->when($sequence, function ($builder, $sequence) {
+                /** @var Revision $builder */
+                return $builder->withTrashed()->find($sequence);
+            }, function ($builder) use ($id) {
+                /** @var Revision $builder */
+                return $builder->newest($id)->firstOrFail();
+            });
+
+        /** @var Entity $entity */
+        $entity = new $entity ($revision->toState(), $revision->entry()->firstOrNew([]));
+
+        $meta = [
+            'published' => $revision->published,
+            'real' => $revision->real,
+            'published_at' => $revision->published_at,
+            'revisions' => $revision->revisions->sortByDesc('deleted_at')->map(function (Revision $revision) {
+                return [
+                    'sequence_id' => (string)$revision->sequence_id,
+                    'name' => $revision->deleted_at->format('d M y \a\t\ H:i:s')
+                ];
+            })->values()
+        ];
+        if (!empty($revision->deleted_at)) {
+            $meta['deleted_at'] = $revision->deleted_at;
         }
 
-        if ($revision->exists() || $revision->creator->id !== $request->user()->id) {
+        $entity->meta($meta);
+
+        return $entity;
+    }
+
+    /**
+     * @param Request $request
+     * @param Routing $routing
+     * @param $id
+     * @return \Illuminate\Http\Response|\Laravel\Lumen\Http\ResponseFactory
+     * @throws \Exception
+     */
+    public function handle(Request $request, Routing $routing, $id)
+    {
+        $revision = Revision::fromRouting($routing)->newest($id)->firstOrFail();
+
+        if ($revision->published && $request->get('event') != 'deleted') {
             $revision = $revision->revise();
         }
 
-        $revision->save();
-        return dd($revision);
-    }
-
-    public function show(Routing $routing, $id)
-    {
-        $entity = $routing->entity();
-        $model = $routing->model();
-        $revision = Revision::fromRouting($routing)->findOrFail($id);
-        return dd($revision, new $entity ($model::query()->firstOrNew([]), $revision->toState()));
-    }
-
-    public function handle(Request $request, Routing $routing, $id)
-    {
-        $revision = Revision::fromRouting($routing)->find($id);
-
-        if ($revision->creator->id != $request->user()->id) {
-            abort(403, 'Revision is not owned by logged in user');
+        if ($request->has('state')) {
+            $revision->toState()->update($request->get('state'));
+        } elseif ($request->has('value')) {
+            $revision->toState()->put($request->get('field'), $request->get('value'));
         }
 
-        if($request->has('state')) {
-            $revision->toState()->set($request->get('state'));
+        $model = ObserverHelper::observe($routing, $revision, $request);
+
+        switch (true) {
+            case $request->get('event') == 'published' && $model->exists:
+                if (!empty($revision->previousRevision)) {
+                    $revision->previousRevision->delete();
+                }
+                $revision->published_at = Carbon::now();
+                break;
+            case $request->get('event') == 'deleted' && !empty($revision->entry):
+                $revision->entry->delete();
+            case $request->get('event') == 'discarded':
+                $revision->deleted_at = Carbon::now();
+                break;
+
         }
 
-        $entity = ObserverHelper::observe($routing, $revision, $request->get('action'), $revision->get('name'));
         $revision->save();
 
-        dd($entity, $revision);
+        return response(['id' => $revision->id], 303);
     }
 }

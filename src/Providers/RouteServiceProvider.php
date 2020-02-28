@@ -8,6 +8,7 @@ use Illuminate\Config\Repository;
 use Illuminate\Support\Collection;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Cors\Cors;
+use Spatie\Cors\CorsServiceProvider;
 
 /**
  * Class RouteServiceProvider
@@ -27,15 +28,27 @@ class RouteServiceProvider extends ServiceProvider
     protected $namespace = 'Flashpoint\Oxidiser\Http\Controllers';
 
     /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
+    {
+        $this->app->register(CorsServiceProvider::class);
+    }
+
+    /**
      * Define the routes for the application.
      *
      * @return void
      */
     public function boot()
     {
+        $this->app->middleware([
+            Cors::class
+        ]);
         $this->app->routeMiddleware([
             'auth' => Authenticate::class,
-            'cors' => Cors::class
         ]);
         $this->mapFlashpointRoutes($this->app->make('config'), $this->app->make('router'));
 
@@ -65,7 +78,7 @@ class RouteServiceProvider extends ServiceProvider
         $router->group([
             'namespace' => 'Flashpoint\Oxidiser\Http\Controllers',
             'prefix' => $config->get('flashpoint.service_url', '/flashpoint') . '/service',
-            'middleware' => [$config->get('flashpoint.guard', 'auth'), 'cors']
+            'middleware' => [$config->get('flashpoint.guard', 'auth')]
         ], function ($router) {
             require __DIR__ . '/../routes.php';
         });
